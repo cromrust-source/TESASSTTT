@@ -36,7 +36,7 @@ from aiogram.utils.keyboard import ReplyKeyboardBuilder
 from aiogram.utils.media_group import MediaGroupBuilder
 from aiogram.client.default import DefaultBotProperties
 
-BOT_TOKEN = "8712709852:AAHhze9Qnrg27pVb8wlJU8V1Dx-_h66xRDg"
+BOT_TOKEN = "8745259092:AAF6Adc3PS0qO_Z5nucnNg2_jyhXakMLPT0"
 ADMIN_IDS = [7437870400, 8693921243]
 REQUIRED_CHANNEL = "SHINA_SELL"
 SUPPORT_USERNAME = "@Shima_lil"
