@@ -1655,6 +1655,8 @@ async def approve_payment_cb(callback: types.CallbackQuery):
         await callback.answer("❌ НЕ НАЙДЕН")
         return
     user_id, diamonds, payment_type, extra_json = info
+    
+    # Обработка разных типов оплат
     if payment_type == 'diamonds':
         await update_diamonds(user_id, diamonds)
         await bot.send_message(user_id, f"✅ ОПЛАТА ПОДТВЕРЖДЕНА!\n💎 +{diamonds}💎")
@@ -1676,9 +1678,17 @@ async def approve_payment_cb(callback: types.CallbackQuery):
     elif payment_type == 'unban':
         await unban_user(user_id)
         await bot.send_message(user_id, "✅ ВАШ АККАУНТ РАЗБАНЕН!")
+    
+    # Подтверждаем оплату в базе
     await approve_payment(payment_id)
-    await callback.answer()
-    await callback.message.edit_text(f"✅ ЗАПРОС #{payment_id} ПОДТВЕРЖДЕН!")
+    
+    # ИСПРАВЛЕНИЕ: удаляем старое сообщение и отправляем новое вместо редактирования
+    await callback.answer(f"✅ ЗАПРОС #{payment_id} ПОДТВЕРЖДЕН!")
+    try:
+        await callback.message.delete()
+    except:
+        pass
+    await callback.message.answer(f"✅ ЗАПРОС #{payment_id} ПОДТВЕРЖДЕН!")
 
 @dp.callback_query(F.data.startswith("rejpay_"))
 async def reject_payment_cb(callback: types.CallbackQuery):
@@ -1690,8 +1700,12 @@ async def reject_payment_cb(callback: types.CallbackQuery):
         conn.commit()
         conn.close()
     await run_sync(sync)
-    await callback.answer()
-    await callback.message.edit_text(f"❌ ЗАПРОС #{payment_id} ОТКЛОНЕН")
+    await callback.answer(f"❌ ЗАПРОС #{payment_id} ОТКЛОНЕН")
+    try:
+        await callback.message.delete()
+    except:
+        pass
+    await callback.message.answer(f"❌ ЗАПРОС #{payment_id} ОТКЛОНЕН")
 
 @dp.message(F.text == "💎 Выдать алмазы", lambda m: is_admin(m.from_user.id))
 async def give_diamonds_start(message: types.Message, state: FSMContext):
