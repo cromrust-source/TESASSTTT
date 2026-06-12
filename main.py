@@ -87,8 +87,7 @@ for folder in [
     f"{MEDIA_DIR}/menu", f"{MEDIA_DIR}/content/video", f"{MEDIA_DIR}/content/photo",
     f"{MEDIA_DIR}/content/video_vip", f"{MEDIA_DIR}/content/photo_vip",
     f"{MEDIA_DIR}/categories/starter", f"{MEDIA_DIR}/categories/gold",
-    f"{MEDIA_DIR}/categories/vip", f"{MEDIA_DIR}/categories/premium_pack",
-    f"{MEDIA_DIR}/categories/general", BACKUP_DIR
+    f"{MEDIA_DIR}/categories/vip", f"{MEDIA_DIR}/categories/general", BACKUP_DIR
 ]:
     Path(folder).mkdir(parents=True, exist_ok=True)
 
@@ -127,19 +126,18 @@ class Cache:
     def get(self, key):
         if key in self.cache:
             data, timestamp = self.cache[key]
-            if time() - timestamp < self.ttl:
+            if time.time() - timestamp < self.ttl:
                 return data
             del self.cache[key]
         return None
     
     def set(self, key, value):
-        self.cache[key] = (value, time())
+        self.cache[key] = (value, time.time())
 
 user_cache = Cache(ttl=30)
 settings_cache = Cache(ttl=60)
 diamonds_cache = Cache(ttl=10)
 premium_cache = Cache(ttl=30)
-
 # ============ КОНТЕКСТНЫЙ МЕНЕДЖЕР ДЛЯ БД ============
 
 @contextmanager
@@ -1296,8 +1294,6 @@ async def watch_photo(message: types.Message):
     if await check_ban_before_action(message):
         return
     user_id = message.from_user.id
-    if not await check_sub(message):
-        return
     
     if get_diamonds(user_id) < 1:
         return await message.answer(f"❌ Недостаточно алмазов!\n\n💎 Ваш баланс: {get_diamonds(user_id)}💎\n💰 Нужно: 1💎 за просмотр")
@@ -2070,127 +2066,6 @@ async def admin_panel_entry(message: types.Message):
 
 # ============ АДМИН ФУНКЦИИ ============
 
-# ============ НОВАЯ РАСШИРЕННАЯ СТАТИСТИКА ============
-
-@dp.message(F.text == "📊 Статистика", lambda m: is_admin(m.from_user.id))
-async def stats_admin(message: types.Message):
-    def sync():
-        conn = get_db()
-        c = conn.cursor()
-        
-        # 1. Всего пользователей
-        total_users = c.execute("SELECT COUNT(*) FROM users").fetchone()[0]
-        
-        # 2. Забаненные
-        banned_users = c.execute("SELECT COUNT(*) FROM users WHERE is_banned = 1").fetchone()[0]
-        
-        # 3. Premium пользователи
-        premium_users = c.execute("SELECT COUNT(*) FROM users WHERE is_premium = 1").fetchone()[0]
-        
-        # 4. Запросы на оплату
-        payments = c.execute("SELECT COUNT(*) FROM pending_payments WHERE status = 'pending'").fetchone()[0]
-        
-        # 5. Задания TikTok на проверке
-        tiktok_tasks = c.execute("SELECT COUNT(*) FROM screenshot_tasks WHERE status = 'pending'").fetchone()[0]
-        
-        # 6. Какие паки были куплены и сколько
-        pack_stats = c.execute("""
-            SELECT category_id, COUNT(*) as count 
-            FROM category_purchases 
-            WHERE status = 'completed' 
-            GROUP BY category_id 
-            ORDER BY count DESC
-        """).fetchall()
-        
-        # 7. Всего просмотров контента
-        total_views = c.execute("SELECT COUNT(*) FROM viewed_content").fetchone()[0]
-        
-        # 8. Всего видео и фото в базе
-        total_videos = c.execute("SELECT COUNT(*) FROM content WHERE type = 'video' AND is_vip = 0").fetchone()[0]
-        total_photos = c.execute("SELECT COUNT(*) FROM content WHERE type = 'photo' AND is_vip = 0").fetchone()[0]
-        total_vip_videos = c.execute("SELECT COUNT(*) FROM content WHERE type = 'video' AND is_vip = 1").fetchone()[0]
-        total_vip_photos = c.execute("SELECT COUNT(*) FROM content WHERE type = 'photo' AND is_vip = 1").fetchone()[0]
-        
-        # 9. Всего использовано токенов
-        total_tokens = c.execute("SELECT COUNT(*) FROM used_tokens").fetchone()[0]
-        
-        # 10. Всего активировано промокодов
-        total_promos = c.execute("SELECT COUNT(*) FROM promo_activations").fetchone()[0]
-        
-        # 11. Всего заработано рефералами
-        total_referrals = c.execute("SELECT SUM(total_referrals) FROM users").fetchone()[0] or 0
-        
-        # 12. Всего алмазов у пользователей
-        total_diamonds = c.execute("SELECT SUM(diamonds) FROM users").fetchone()[0] or 0
-        
-        conn.close()
-        return {
-            'total_users': total_users,
-            'banned_users': banned_users,
-            'premium_users': premium_users,
-            'payments': payments,
-            'tiktok_tasks': tiktok_tasks,
-            'pack_stats': pack_stats,
-            'total_views': total_views,
-            'total_videos': total_videos,
-            'total_photos': total_photos,
-            'total_vip_videos': total_vip_videos,
-            'total_vip_photos': total_vip_photos,
-            'total_tokens': total_tokens,
-            'total_promos': total_promos,
-            'total_referrals': total_referrals,
-            'total_diamonds': total_diamonds
-        }
-    
-    stats = await run_sync(sync)
-    
-    # Формируем текст статистики
-    text = (
-        f"📊 <b>СТАТИСТИКА БОТА</b>\n"
-        f"{DIVIDER}\n\n"
-        f"👥 <b>ПОЛЬЗОВАТЕЛИ:</b>\n"
-        f"├ 📊 Всего: <b>{stats['total_users']}</b>\n"
-        f"├ 🚫 Забанены: <b>{stats['banned_users']}</b>\n"
-        f"├ ⭐ Premium: <b>{stats['premium_users']}</b>\n"
-        f"└ 💎 Всего алмазов: <b>{stats['total_diamonds']}</b>\n\n"
-        f"📦 <b>МАГАЗИН И ЗАДАНИЯ:</b>\n"
-        f"├ 💰 Запросы на оплату: <b>{stats['payments']}</b>\n"
-        f"├ 📸 TikTok заданий: <b>{stats['tiktok_tasks']}</b>\n"
-        f"└ 🔑 Использовано токенов: <b>{stats['total_tokens']}</b>\n\n"
-        f"📦 <b>ПРОДАЖИ ПАКОВ:</b>\n"
-    )
-    
-    # Добавляем статистику по пакам
-    pack_names = {
-        "starter": "🧸 ДЕТСКОЕ",
-        "gold": "🔞 16-18 лет",
-        "vip": "👶 11-15 лет",
-        "general": "📦 ОБЩИЙ ПАК"
-    }
-    
-    if stats['pack_stats']:
-        for cat_id, count in stats['pack_stats']:
-            name = pack_names.get(cat_id, cat_id)
-            text += f"├ {name}: <b>{count}</b> шт.\n"
-    else:
-        text += f"├ ❌ Нет продаж\n"
-    
-    text += (
-        f"\n📹 <b>КОНТЕНТ В БОТЕ:</b>\n"
-        f"├ 🎥 Видео: <b>{stats['total_videos']}</b>\n"
-        f"├ 📸 Фото: <b>{stats['total_photos']}</b>\n"
-        f"├ 🔞 VIP Видео: <b>{stats['total_vip_videos']}</b>\n"
-        f"├ 🔞 VIP Фото: <b>{stats['total_vip_photos']}</b>\n"
-        f"└ 👁️ Всего просмотров: <b>{stats['total_views']}</b>\n\n"
-        f"🎁 <b>ДРУГОЕ:</b>\n"
-        f"├ 🎫 Активировано промокодов: <b>{stats['total_promos']}</b>\n"
-        f"└ 👥 Всего рефералов: <b>{stats['total_referrals']}</b>"
-    )
-    
-    await message.answer(text, parse_mode="HTML")
-
-# ============ ОСТАЛЬНЫЕ АДМИН ФУНКЦИИ ============
-
 @dp.message(F.text == "💳 Реквизиты карты", lambda m: is_admin(m.from_user.id))
 async def change_card_menu(message: types.Message, state: FSMContext):
     card = await get_setting('card_number') or CARD_NUMBER
@@ -2660,6 +2535,8 @@ async def remove_premium_id(message: types.Message, state: FSMContext):
             f"❌ <b>Введите число!</b>",
             parse_mode="HTML"
         )
+
+# ============ АДМИН: ДОБАВЛЕНИЕ КОНТЕНТА ============
 
 @dp.message(F.text == "➕ Добавить видео", lambda m: is_admin(m.from_user.id))
 async def add_video_start(message: types.Message, state: FSMContext):
@@ -3291,6 +3168,123 @@ async def cancel_user_ban_search(callback: types.CallbackQuery):
     await callback.answer("❌ Отменено")
     await callback.message.delete()
 
+@dp.message(F.text == "📊 Статистика", lambda m: is_admin(m.from_user.id))
+async def stats_admin(message: types.Message):
+    def sync():
+        conn = get_db()
+        c = conn.cursor()
+        
+        # 1. Всего пользователей
+        total_users = c.execute("SELECT COUNT(*) FROM users").fetchone()[0]
+        
+        # 2. Забаненные
+        banned_users = c.execute("SELECT COUNT(*) FROM users WHERE is_banned = 1").fetchone()[0]
+        
+        # 3. Premium пользователи
+        premium_users = c.execute("SELECT COUNT(*) FROM users WHERE is_premium = 1").fetchone()[0]
+        
+        # 4. Запросы на оплату
+        payments = c.execute("SELECT COUNT(*) FROM pending_payments WHERE status = 'pending'").fetchone()[0]
+        
+        # 5. Задания TikTok на проверке
+        tiktok_tasks = c.execute("SELECT COUNT(*) FROM screenshot_tasks WHERE status = 'pending'").fetchone()[0]
+        
+        # 6. Какие паки были куплены и сколько
+        pack_stats = c.execute("""
+            SELECT category_id, COUNT(*) as count 
+            FROM category_purchases 
+            WHERE status = 'completed' 
+            GROUP BY category_id 
+            ORDER BY count DESC
+        """).fetchall()
+        
+        # 7. Всего просмотров контента
+        total_views = c.execute("SELECT COUNT(*) FROM viewed_content").fetchone()[0]
+        
+        # 8. Всего видео и фото в базе
+        total_videos = c.execute("SELECT COUNT(*) FROM content WHERE type = 'video' AND is_vip = 0").fetchone()[0]
+        total_photos = c.execute("SELECT COUNT(*) FROM content WHERE type = 'photo' AND is_vip = 0").fetchone()[0]
+        total_vip_videos = c.execute("SELECT COUNT(*) FROM content WHERE type = 'video' AND is_vip = 1").fetchone()[0]
+        total_vip_photos = c.execute("SELECT COUNT(*) FROM content WHERE type = 'photo' AND is_vip = 1").fetchone()[0]
+        
+        # 9. Всего использовано токенов
+        total_tokens = c.execute("SELECT COUNT(*) FROM used_tokens").fetchone()[0]
+        
+        # 10. Всего активировано промокодов
+        total_promos = c.execute("SELECT COUNT(*) FROM promo_activations").fetchone()[0]
+        
+        # 11. Всего заработано рефералами
+        total_referrals = c.execute("SELECT SUM(total_referrals) FROM users").fetchone()[0] or 0
+        
+        # 12. Всего алмазов у пользователей
+        total_diamonds = c.execute("SELECT SUM(diamonds) FROM users").fetchone()[0] or 0
+        
+        conn.close()
+        return {
+            'total_users': total_users,
+            'banned_users': banned_users,
+            'premium_users': premium_users,
+            'payments': payments,
+            'tiktok_tasks': tiktok_tasks,
+            'pack_stats': pack_stats,
+            'total_views': total_views,
+            'total_videos': total_videos,
+            'total_photos': total_photos,
+            'total_vip_videos': total_vip_videos,
+            'total_vip_photos': total_vip_photos,
+            'total_tokens': total_tokens,
+            'total_promos': total_promos,
+            'total_referrals': total_referrals,
+            'total_diamonds': total_diamonds
+        }
+    
+    stats = await run_sync(sync)
+    
+    # Формируем текст статистики
+    text = (
+        f"📊 <b>СТАТИСТИКА БОТА</b>\n"
+        f"{DIVIDER}\n\n"
+        f"👥 <b>ПОЛЬЗОВАТЕЛИ:</b>\n"
+        f"├ 📊 Всего: <b>{stats['total_users']}</b>\n"
+        f"├ 🚫 Забанены: <b>{stats['banned_users']}</b>\n"
+        f"├ ⭐ Premium: <b>{stats['premium_users']}</b>\n"
+        f"└ 💎 Всего алмазов: <b>{stats['total_diamonds']}</b>\n\n"
+        f"📦 <b>МАГАЗИН И ЗАДАНИЯ:</b>\n"
+        f"├ 💰 Запросы на оплату: <b>{stats['payments']}</b>\n"
+        f"├ 📸 TikTok заданий: <b>{stats['tiktok_tasks']}</b>\n"
+        f"└ 🔑 Использовано токенов: <b>{stats['total_tokens']}</b>\n\n"
+        f"📦 <b>ПРОДАЖИ ПАКОВ:</b>\n"
+    )
+    
+    # Добавляем статистику по пакам
+    pack_names = {
+        "starter": "🧸 ДЕТСКОЕ",
+        "gold": "🔞 16-18 лет",
+        "vip": "👶 11-15 лет",
+        "general": "📦 ОБЩИЙ ПАК"
+    }
+    
+    if stats['pack_stats']:
+        for cat_id, count in stats['pack_stats']:
+            name = pack_names.get(cat_id, cat_id)
+            text += f"├ {name}: <b>{count}</b> шт.\n"
+    else:
+        text += f"├ ❌ Нет продаж\n"
+    
+    text += (
+        f"\n📹 <b>КОНТЕНТ В БОТЕ:</b>\n"
+        f"├ 🎥 Видео: <b>{stats['total_videos']}</b>\n"
+        f"├ 📸 Фото: <b>{stats['total_photos']}</b>\n"
+        f"├ 🔞 VIP Видео: <b>{stats['total_vip_videos']}</b>\n"
+        f"├ 🔞 VIP Фото: <b>{stats['total_vip_photos']}</b>\n"
+        f"└ 👁️ Всего просмотров: <b>{stats['total_views']}</b>\n\n"
+        f"🎁 <b>ДРУГОЕ:</b>\n"
+        f"├ 🎫 Активировано промокодов: <b>{stats['total_promos']}</b>\n"
+        f"└ 👥 Всего рефералов: <b>{stats['total_referrals']}</b>"
+    )
+    
+    await message.answer(text, parse_mode="HTML")
+
 @dp.message(F.text == "📸 Проверить задания", lambda m: is_admin(m.from_user.id))
 async def check_tiktok(message: types.Message):
     def sync():
@@ -3665,4 +3659,4 @@ if __name__ == "__main__":
     try:
         asyncio.run(main())
     except KeyboardInterrupt:
-        logger.info("👋 ОСТАНОВЛЕН"
+        logger.info("👋 ОСТАНОВЛЕН")
